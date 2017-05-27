@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from __future__ import division
 from Tkinter import *
 import tkFileDialog
 from PIL import Image, ImageTk
@@ -12,7 +11,7 @@ import math
 # colors for the bboxes
 # COLORS = ['red', 'blue', 'yellow', 'pink', 'cyan', 'green', 'black']
 
-CLASS_COLORS = ['red', 'blue', 'yellow', 'green', 'pink', 'cyan', 'gold', 'orange', 'purple', 'violet', 'tomato']
+CLASS_COLORS = ['red', 'blue', 'brown', 'green', 'salmon', 'cyan', 'gold', 'orange', 'purple', 'violet', 'tomato', 'sky blue']
 ROTATE_IMAGE = True
 
 
@@ -39,7 +38,7 @@ class LabelTool:
         self.tkimg = None
         self.img = None
         self.rotated_degree = 0
-        self.cur_class_idx = 1
+        self.cur_class_idx = -1
         self.truncated = IntVar()
         self.classes = None
         self.load_classes()
@@ -55,6 +54,7 @@ class LabelTool:
         self.rect_ids = []
         self.bboxId = None
         self.bboxList = []
+        self.indexes_to_change = []
         self.hl = None
         self.vl = None
 
@@ -68,24 +68,36 @@ class LabelTool:
         self.pnl_left.grid(row=0, column=0, sticky=W+N+S, padx=5)
 
         self.lbl_class = Label(self.pnl_left, text='Choose object class:')
-        self.lbl_class.grid(row=0, column=0, sticky=W+N)
-        self.lb_class = Listbox(self.pnl_left, width=22, height=30)
+        self.lbl_class.pack(anchor=W)
+        pnl = Frame(self.pnl_left)
+        pnl.pack(fill=Y, expand=True)
+        scrollbar = Scrollbar(pnl, orient=VERTICAL)
+        self.lb_class = Listbox(pnl, yscrollcommand=scrollbar.set, width=25, height=35)
+        scrollbar.config(command=self.lb_class.yview)
         self.lb_class.bind('<<ListboxSelect>>', self.on_class_select)
-        self.lb_class.grid(row=1, column=0, sticky=N)
+        scrollbar.pack(side=RIGHT, fill=Y)
+        self.lb_class.pack(side=LEFT, fill=Y)
         self.load_class_list()
 
         self.pnl_add = Frame(self.pnl_left)
-        self.pnl_add.grid(row=2, column=0, rowspan=1, sticky=N+W+E)
+        self.pnl_add.pack(anchor=W, fill=X)
         self.txt_class = Entry(self.pnl_add, width=15)
-        self.txt_class.grid(row=0, column=0, sticky=N+E)
+        self.txt_class.pack(side=LEFT, expand=True, fill=X)
         self.btn_add = Button(self.pnl_add, text="Add", command=self.add_class)
-        self.btn_add.grid(row=0, column=1, sticky=N+E)
+        self.btn_add.pack(side=RIGHT)
 
         self.btn_del = Button(self.pnl_left, text="Delete", command=self.remove_class)
-        self.btn_del.grid(row=3, column=0, sticky=N+W+E)
+        self.btn_del.pack(anchor=W, fill=X)
 
         self.chk_truncated = Checkbutton(self.pnl_left, text="Truncated(t)", variable=self.truncated)
-        self.chk_truncated.grid(row=4, column=0, sticky=N+W)
+        self.chk_truncated.pack(anchor=W)
+
+        self.pnl_rotate = Frame(self.pnl_left)
+        self.pnl_rotate.pack()
+        self.btn_counterclockwise = Button(self.pnl_rotate, text='↺', command=self.rotate_counterclockwise)
+        self.btn_counterclockwise.pack(side=LEFT)
+        self.btn_clockwise = Button(self.pnl_rotate, text='↻', command=self.rotate_clockwise)
+        self.btn_clockwise.pack(side=LEFT)
 
         # main panel for labeling
         self.pnl_center = Frame(self.frame)
@@ -105,30 +117,28 @@ class LabelTool:
         #     self.parent.bind(str(i + 1), self.on_num_press)
         self.mainPanel.grid(row=1, column=0, sticky=W+N)
 
-        self.pnl_rotate = Frame(self.pnl_center)
-        self.pnl_rotate.grid(row=2, column=0)
-        self.btn_counterclockwise = Button(self.pnl_rotate, text='↺', command=self.rotate_counterclockwise)
-        self.btn_counterclockwise.pack(side=LEFT)
-        self.btn_clockwise = Button(self.pnl_rotate, text='↻', command=self.rotate_clockwise)
-        self.btn_clockwise.pack(side=LEFT)
-
         # showing bbox info & delete bbox
         self.pnl_right = Frame(self.frame)
         self.pnl_right.grid(row=0, column=2, sticky=E+N+S, padx=5)
 
         self.lb1 = Label(self.pnl_right, text='Bounding boxes:')
-        self.lb1.grid(row=0, column=0, sticky=W+N)
-        self.listbox = Listbox(self.pnl_right, width=22, height=30)
+        self.lb1.pack(anchor=W)
+        pnl = Frame(self.pnl_right)
+        pnl.pack(fill=Y, expand=True)
+        scrollbar = Scrollbar(pnl, orient=VERTICAL)
+        self.listbox = Listbox(pnl, yscrollcommand=scrollbar.set, selectmode=EXTENDED, width=25, height=35)
+        scrollbar.config(command=self.listbox.yview)
         self.listbox.bind('<<ListboxSelect>>', self.on_select)
-        self.listbox.grid(row=1, column=0, sticky=N)
+        scrollbar.pack(side=RIGHT, fill=Y)
+        self.listbox.pack(side=LEFT, fill=Y)
         self.btnDel = Button(self.pnl_right, text='Delete', command=self.del_bbox)
-        self.btnDel.grid(row=2, column=0, sticky=W+E+N)
-        self.btnClear = Button(self.pnl_right, text='Clear All', command=self.clear_bbox)
-        self.btnClear.grid(row=3, column=0, sticky=W+E+N)
+        self.btnDel.pack(anchor=W, fill=X)
+        self.btnClear = Button(self.pnl_right, text='Change Class', command=self.change_class)
+        self.btnClear.pack(anchor=W, fill=X)
         self.btnHideAll = Button(self.pnl_right, text="Hide All", command=self.hide_all)
-        self.btnHideAll.grid(row=4, column=0, sticky=W+E+N)
+        self.btnHideAll.pack(anchor=W, fill=X)
         self.btnShowAll = Button(self.pnl_right, text="Show All", command=self.show_all)
-        self.btnShowAll.grid(row=5, column=0, sticky=W+E+N)
+        self.btnShowAll.pack(anchor=W, fill=X)
 
         # control panel for image navigation
         self.pnl_bottom = Frame(self.frame)
@@ -153,7 +163,7 @@ class LabelTool:
         self.frame.columnconfigure(1, weight=1)
         self.frame.rowconfigure(0, weight=1)
 
-        self.parent.after(0, self.choose_dir)
+        self.parent.after(100, self.choose_dir)
 
     def choose_dir(self, event=None):
         self.rootDir = tkFileDialog.askdirectory()
@@ -230,6 +240,8 @@ class LabelTool:
 
         for bbox in self.bboxList:
             cls = bbox['class']
+            if self.cur_class_idx > -1 and self.classes[self.cur_class_idx] != cls:
+                continue
             tmp = bbox['bbox']
             if not ROTATE_IMAGE and self.rotated_degree != 0:
                 tmp = self.rotate_annotation(bbox['bbox'][0], bbox['bbox'][1], bbox['bbox'][2], bbox['bbox'][3],
@@ -297,12 +309,17 @@ class LabelTool:
                         'bbox': tuple(tmp),
                         'truncated': truncated
                     })
-                    self.listbox.insert(END, '%s (%d, %d, %d, %d)' % (cls, tmp[0], tmp[1], tmp[2], tmp[3]))
-                    self.listbox.itemconfig(END, fg=self.get_class_color(cls))
+            self.bboxList.sort(key=lambda bbox: bbox['class'])
+            for bbox in self.bboxList:
+                cls = bbox['class']
+                tmp = bbox['bbox']
+                self.listbox.insert(END, '%s (%d, %d, %d, %d)' % (cls, tmp[0], tmp[1], tmp[2], tmp[3]))
+                self.listbox.itemconfig(END, fg=self.get_class_color(cls))
 
         self.draw()
 
     def save_image(self):
+        self.bboxList.sort(key=lambda bbox: bbox['class'])
         with open(self.labelfilename, 'w') as f:
             f.write('rotate {}\n'.format(self.rotated_degree))
             for i, item in enumerate(self.bboxList):
@@ -354,14 +371,24 @@ class LabelTool:
 
     def del_bbox(self, event=None):
         sel = self.listbox.curselection()
-        if len(sel) != 1:
+        if len(sel) <= 0:
             return
-        idx = int(sel[0])
-        assert len(self.rect_ids) == 1
-        self.mainPanel.delete(self.rect_ids[0])
-        self.rect_ids.pop(0)
-        self.bboxList.pop(idx)
-        self.listbox.delete(idx)
+        sel = [int(s) for s in sel]
+        for idx in sorted(sel, reverse=True):
+            idx = int(idx)
+            self.bboxList.pop(idx)
+            self.listbox.delete(idx)
+        for rect_id in self.rect_ids:
+            self.mainPanel.delete(rect_id)
+        del self.rect_ids[:]
+
+    def change_class(self, event=None):
+        sel = self.listbox.curselection()
+        if len(sel) <= 0:
+            return
+        for idx in sel:
+            idx = int(idx)
+            self.indexes_to_change.append(idx)
 
     def clear_bbox(self, event=None):
         for idx in range(len(self.rect_ids)):
@@ -376,6 +403,8 @@ class LabelTool:
         self.rect_ids = []
 
     def show_all(self, event=None):
+        self.lb_class.select_clear(0, self.lb_class.size() - 1)
+        self.cur_class_idx = -1
         for i, item in enumerate(self.bboxList):
             cls = item['class']
             bbox = item['bbox']
@@ -405,31 +434,48 @@ class LabelTool:
             self.load_image()
 
     def on_select(self, event):
-        sel = self.listbox.curselection()
-        if len(sel) != 1:
-            return
-        idx = int(sel[0])
         self.hide_all()
-        item = self.bboxList[idx]
-        cls = item['class']
-        bbox = item['bbox']
-        truncated = item['truncated']
-        rect_id = self.mainPanel.create_rectangle(bbox[0], bbox[1], bbox[2], bbox[3], width=1,
-                                                  outline=self.get_class_color(cls),
-                                                  dash=(3, 4) if truncated else None)
-        self.rect_ids.append(rect_id)
+        sel = self.listbox.curselection()
+        for idx in sel:
+            idx = int(idx)
+            item = self.bboxList[idx]
+            cls = item['class']
+            bbox = item['bbox']
+            truncated = item['truncated']
+            rect_id = self.mainPanel.create_rectangle(bbox[0], bbox[1], bbox[2], bbox[3], width=1,
+                                                      outline=self.get_class_color(cls),
+                                                      dash=(3, 4) if truncated else None)
+            self.rect_ids.append(rect_id)
 
-    def on_num_press(self, event):
-        self.cur_class_idx = int(event.char) - 1
-        self.lb_class.select_clear(0, self.lb_class.size() - 1)
-        self.lb_class.selection_set(self.cur_class_idx)
+    # def on_num_press(self, event):
+    #     self.cur_class_idx = int(event.char) - 1
+    #     self.lb_class.select_clear(0, self.lb_class.size() - 1)
+    #     self.lb_class.selection_set(self.cur_class_idx)
 
     def on_class_select(self, event):
         sel = self.lb_class.curselection()
         if len(sel) != 1:
             return
-        idx = int(sel[0])
-        self.cur_class_idx = idx
+        self.cur_class_idx = int(sel[0])
+        # change bbox classes if needed
+        if len(self.indexes_to_change) > 0:
+            for idx in self.indexes_to_change:
+                old_class = self.bboxList[idx]['class']
+                new_class = self.classes[self.cur_class_idx]
+                self.bboxList[idx]['class'] = new_class
+                new_text = self.listbox.get(idx).replace(old_class, new_class)
+                self.listbox.delete(idx)
+                self.listbox.insert(idx, new_text)
+                self.listbox.itemconfig(idx, fg=self.get_class_color(new_class))
+            del self.indexes_to_change[:]
+        # mark the bbox list items selected
+        cur_class_name = self.classes[self.cur_class_idx]
+        self.listbox.select_clear(0, END)
+        for i in range(self.listbox.size()):
+            if cur_class_name in self.listbox.get(i):
+                self.listbox.select_set(i)
+        # redraw the selected rectangles
+        self.draw()
 
     def change_truncated(self, event):
         self.truncated.set(1 - self.truncated.get())
