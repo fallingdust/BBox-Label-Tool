@@ -3,6 +3,7 @@
 
 from Tkinter import *
 import tkFileDialog
+import tkMessageBox
 from PIL import Image, ImageTk
 import os
 import glob
@@ -41,6 +42,7 @@ class LabelTool:
         self.cur_class_idx = -1
         self.truncated = IntVar()
         self.classes = None
+        self.cur_scale = 1.0
         self.load_classes()
 
         # initialize mouse state
@@ -69,10 +71,15 @@ class LabelTool:
 
         self.lbl_class = Label(self.pnl_left, text='Choose object class:')
         self.lbl_class.pack(anchor=W)
+
+        sv_search = StringVar()
+        sv_search.trace('w', lambda name, index, mode, sv=sv_search: self.on_search(sv))
+        self.txt_search = Entry(self.pnl_left, width=24, textvariable=sv_search)
+        self.txt_search.pack(anchor=W)
         pnl = Frame(self.pnl_left)
         pnl.pack(fill=Y, expand=True)
         scrollbar = Scrollbar(pnl, orient=VERTICAL)
-        self.lb_class = Listbox(pnl, yscrollcommand=scrollbar.set, width=25, height=35)
+        self.lb_class = Listbox(pnl, yscrollcommand=scrollbar.set, width=25, height=25)
         scrollbar.config(command=self.lb_class.yview)
         self.lb_class.bind('<<ListboxSelect>>', self.on_class_select)
         scrollbar.pack(side=RIGHT, fill=Y)
@@ -96,26 +103,35 @@ class LabelTool:
         self.pnl_rotate.pack()
         self.btn_counterclockwise = Button(self.pnl_rotate, text='↺', command=self.rotate_counterclockwise)
         self.btn_counterclockwise.pack(side=LEFT)
+        self.lbl_rotate = Label(self.pnl_rotate, text='0°')
+        self.lbl_rotate.pack(side=LEFT)
         self.btn_clockwise = Button(self.pnl_rotate, text='↻', command=self.rotate_clockwise)
         self.btn_clockwise.pack(side=LEFT)
+        self.btn_zoom_out = Button(self.pnl_rotate, text='-', command=self.zoom_out)
+        self.btn_zoom_out.pack(side=LEFT)
+        self.lbl_scale = Label(self.pnl_rotate, text='100%')
+        self.lbl_scale.pack(side=LEFT)
+        self.btn_zoom_in = Button(self.pnl_rotate, text='+', command=self.zoom_in)
+        self.btn_zoom_in.pack(side=LEFT)
 
         # main panel for labeling
         self.pnl_center = Frame(self.frame)
         self.pnl_center.grid(row=0, column=1, sticky=W+E+N+S)
 
         self.lbl_image = Label(self.pnl_center, text='')
-        self.lbl_image.grid(row=0, column=0, sticky=W+N)
+        self.lbl_image.pack(anchor=W)
 
-        self.mainPanel = Canvas(self.pnl_center, cursor='tcross')
-        self.mainPanel.bind("<Button-1>", self.mouse_click)
-        self.mainPanel.bind("<Motion>", self.mouse_move)
-        self.parent.bind("<Escape>", self.cancel_bbox)  # press <Espace> to cancel current bbox
-        # self.parent.bind("a", self.prev_image)  # press 'a' to go backforward
-        # self.parent.bind("d", self.next_image)  # press 'd' to go forward
-        self.parent.bind("t", self.change_truncated)
-        # for i in range(len(self.classes)):
-        #     self.parent.bind(str(i + 1), self.on_num_press)
-        self.mainPanel.grid(row=1, column=0, sticky=W+N)
+        self.canvas = Canvas(self.pnl_center, cursor='tcross')
+        self.canvas.bind("<Button-1>", self.mouse_click)
+        self.canvas.bind("<Motion>", self.mouse_move)
+        self.hbar = Scrollbar(self.pnl_center, orient=HORIZONTAL)
+        self.hbar.config(command=self.canvas.xview)
+        self.hbar.pack(side=BOTTOM, fill=X)
+        self.vbar = Scrollbar(self.pnl_center, orient=VERTICAL)
+        self.vbar.config(command=self.canvas.yview)
+        self.vbar.pack(side=RIGHT, fill=Y)
+        self.canvas.config(xscrollcommand=self.hbar.set, yscrollcommand=self.vbar.set)
+        self.canvas.pack(side=LEFT, expand=True, fill=BOTH)
 
         # showing bbox info & delete bbox
         self.pnl_right = Frame(self.frame)
@@ -126,7 +142,7 @@ class LabelTool:
         pnl = Frame(self.pnl_right)
         pnl.pack(fill=Y, expand=True)
         scrollbar = Scrollbar(pnl, orient=VERTICAL)
-        self.listbox = Listbox(pnl, yscrollcommand=scrollbar.set, selectmode=EXTENDED, width=25, height=35)
+        self.listbox = Listbox(pnl, yscrollcommand=scrollbar.set, selectmode=EXTENDED, width=25, height=25)
         scrollbar.config(command=self.listbox.yview)
         self.listbox.bind('<<ListboxSelect>>', self.on_select)
         scrollbar.pack(side=RIGHT, fill=Y)
@@ -163,6 +179,12 @@ class LabelTool:
         self.frame.columnconfigure(1, weight=1)
         self.frame.rowconfigure(0, weight=1)
 
+        self.parent.bind("<Escape>", self.cancel_bbox)  # press <Espace> to cancel current bbox
+        # self.parent.bind("a", self.prev_image)  # press 'a' to go backforward
+        # self.parent.bind("d", self.next_image)  # press 'd' to go forward
+        self.parent.bind("t", self.change_truncated)
+        # for i in range(len(self.classes)):
+        #     self.parent.bind(str(i + 1), self.on_num_press)
         self.parent.after(100, self.choose_dir)
 
     def choose_dir(self, event=None):
@@ -196,7 +218,7 @@ class LabelTool:
         print '%d images loaded' % self.total
 
     def add_class(self):
-        new_class = self.txt_class.get().strip()
+        new_class = self.txt_class.get().strip().encode('utf-8')
         if not new_class:
             return
         self.classes.append(new_class)
@@ -228,15 +250,29 @@ class LabelTool:
             self.lb_class.insert(END, '{}'.format(cls))
             self.lb_class.itemconfig(END, fg=self.get_class_color(cls))
 
+    def on_search(self, sv):
+        keyword = sv.get().encode('utf-8')
+        if not hasattr(self, 'lb_class'):
+            return
+        self.lb_class.delete(0, END)
+        for cls in self.classes:
+            if not keyword or keyword in cls:
+                self.lb_class.insert(END, '{}'.format(cls))
+                self.lb_class.itemconfig(END, fg=self.get_class_color(cls))
+
     def draw(self):
+        self.canvas.delete(ALL)
+
         if ROTATE_IMAGE:
             img = self.img.rotate(self.rotated_degree, resample=Image.BICUBIC)
         else:
             img = self.img
+        if self.cur_scale != 1:
+            img = img.resize((int(img.size[0] * self.cur_scale), int(img.size[1] * self.cur_scale)), Image.BILINEAR)
         self.tkimg = ImageTk.PhotoImage(img)
-        self.mainPanel.config(width=self.tkimg.width(), height=self.tkimg.height(),
-                              highlightthickness=0)
-        self.mainPanel.create_image(0, 0, image=self.tkimg, anchor=NW)
+        self.canvas.config(width=self.tkimg.width(), height=self.tkimg.height(), highlightthickness=0)
+        self.canvas.create_image(0, 0, image=self.tkimg, anchor=NW)
+        self.canvas.config(scrollregion=self.canvas.bbox(ALL))
 
         for bbox in self.bboxList:
             cls = bbox['class']
@@ -247,10 +283,19 @@ class LabelTool:
                 tmp = self.rotate_annotation(bbox['bbox'][0], bbox['bbox'][1], bbox['bbox'][2], bbox['bbox'][3],
                                              -self.rotated_degree, self.tkimg.width() / 2, self.tkimg.height() / 2)
             truncated = bbox['truncated']
-            rect_id = self.mainPanel.create_rectangle(tmp[0], tmp[1], tmp[2], tmp[3], width=1,
-                                                      outline=self.get_class_color(cls),
-                                                      dash=(3, 4) if truncated else None)
-            self.rect_ids.append(rect_id)
+            self.draw_bbox(cls, tmp, truncated)
+
+    def draw_bbox(self, cls, bbox, truncated):
+        if self.cur_scale != 1:
+            tmp = list(bbox)
+            for i in range(4):
+                tmp[i] *= self.cur_scale
+        else:
+            tmp = bbox
+        rect_id = self.canvas.create_rectangle(tmp[0], tmp[1], tmp[2], tmp[3], width=1,
+                                               outline=self.get_class_color(cls),
+                                               dash=(3, 4) if truncated else None)
+        self.rect_ids.append(rect_id)
 
     def rotate_annotation(self, x1, y1, x2, y2, rotated_degree, center_x, center_y):
         x3 = x1
@@ -329,11 +374,21 @@ class LabelTool:
         print 'Image No. %d saved' % self.cur
 
     def mouse_click(self, event):
+        if self.cur_scale < 1 - 1e-5:
+            tkMessageBox.showwarning('禁止标注', '不允许在小图上进行标注操作')
+            return
+        x = int(self.canvas.canvasx(event.x))
+        y = int(self.canvas.canvasy(event.y))
         if self.STATE['click'] == 0:
-            self.STATE['x'], self.STATE['y'] = event.x, event.y
+            self.STATE['x'], self.STATE['y'] = x, y
         else:
-            x1, x2 = min(self.STATE['x'], event.x), max(self.STATE['x'], event.x)
-            y1, y2 = min(self.STATE['y'], event.y), max(self.STATE['y'], event.y)
+            x1, x2 = min(self.STATE['x'], x), max(self.STATE['x'], x)
+            y1, y2 = min(self.STATE['y'], y), max(self.STATE['y'], y)
+            if self.cur_scale != 1:
+                x1 = int(round(float(x1) / self.cur_scale))
+                x2 = int(round(float(x2) / self.cur_scale))
+                y1 = int(round(float(y1) / self.cur_scale))
+                y2 = int(round(float(y2) / self.cur_scale))
             cls = self.classes[self.cur_class_idx]
             self.bboxList.append({
                 'class': cls,
@@ -347,25 +402,27 @@ class LabelTool:
         self.STATE['click'] = 1 - self.STATE['click']
 
     def mouse_move(self, event):
-        self.disp.config(text='x: %d, y: %d' % (event.x, event.y))
+        x = int(self.canvas.canvasx(event.x))
+        y = int(self.canvas.canvasy(event.y))
+        self.disp.config(text='x: %d, y: %d' % (x, y))
         if self.tkimg:
             if self.hl:
-                self.mainPanel.delete(self.hl)
-            self.hl = self.mainPanel.create_line(0, event.y, self.tkimg.width(), event.y, width=1)
+                self.canvas.delete(self.hl)
+            self.hl = self.canvas.create_line(0, y, self.tkimg.width(), y, width=1)
             if self.vl:
-                self.mainPanel.delete(self.vl)
-            self.vl = self.mainPanel.create_line(event.x, 0, event.x, self.tkimg.height(), width=1)
+                self.canvas.delete(self.vl)
+            self.vl = self.canvas.create_line(x, 0, x, self.tkimg.height(), width=1)
         if 1 == self.STATE['click']:
             if self.bboxId:
-                self.mainPanel.delete(self.bboxId)
-            self.bboxId = self.mainPanel.create_rectangle(self.STATE['x'], self.STATE['y'], event.x, event.y, width=1,
+                self.canvas.delete(self.bboxId)
+            self.bboxId = self.canvas.create_rectangle(self.STATE['x'], self.STATE['y'], x, y, width=1,
                                                           outline=self.get_class_color(self.classes[self.cur_class_idx]),
                                                           dash=(3, 4) if self.truncated.get() else None)
 
     def cancel_bbox(self, event):
         if 1 == self.STATE['click']:
             if self.bboxId:
-                self.mainPanel.delete(self.bboxId)
+                self.canvas.delete(self.bboxId)
                 self.bboxId = None
                 self.STATE['click'] = 0
 
@@ -379,7 +436,7 @@ class LabelTool:
             self.bboxList.pop(idx)
             self.listbox.delete(idx)
         for rect_id in self.rect_ids:
-            self.mainPanel.delete(rect_id)
+            self.canvas.delete(rect_id)
         del self.rect_ids[:]
 
     def change_class(self, event=None):
@@ -392,14 +449,14 @@ class LabelTool:
 
     def clear_bbox(self, event=None):
         for idx in range(len(self.rect_ids)):
-            self.mainPanel.delete(self.rect_ids[idx])
+            self.canvas.delete(self.rect_ids[idx])
         self.listbox.delete(0, len(self.bboxList))
         self.rect_ids = []
         self.bboxList = []
 
     def hide_all(self, event=None):
         for rect_id in self.rect_ids:
-            self.mainPanel.delete(rect_id)
+            self.canvas.delete(rect_id)
         self.rect_ids = []
 
     def show_all(self, event=None):
@@ -409,10 +466,7 @@ class LabelTool:
             cls = item['class']
             bbox = item['bbox']
             truncated = item['truncated']
-            rect_id = self.mainPanel.create_rectangle(bbox[0], bbox[1], bbox[2], bbox[3], width=1,
-                                                      outline=self.get_class_color(cls),
-                                                      dash=(3, 4) if truncated else None)
-            self.rect_ids.append(rect_id)
+            self.draw_bbox(cls, bbox, truncated)
 
     def prev_image(self, event=None):
         self.save_image()
@@ -442,10 +496,7 @@ class LabelTool:
             cls = item['class']
             bbox = item['bbox']
             truncated = item['truncated']
-            rect_id = self.mainPanel.create_rectangle(bbox[0], bbox[1], bbox[2], bbox[3], width=1,
-                                                      outline=self.get_class_color(cls),
-                                                      dash=(3, 4) if truncated else None)
-            self.rect_ids.append(rect_id)
+            self.draw_bbox(cls, bbox, truncated)
 
     # def on_num_press(self, event):
     #     self.cur_class_idx = int(event.char) - 1
@@ -472,7 +523,7 @@ class LabelTool:
         cur_class_name = self.classes[self.cur_class_idx]
         self.listbox.select_clear(0, END)
         for i in range(self.listbox.size()):
-            if cur_class_name in self.listbox.get(i):
+            if cur_class_name in self.listbox.get(i).encode('utf-8'):
                 self.listbox.select_set(i)
         # redraw the selected rectangles
         self.draw()
@@ -482,10 +533,26 @@ class LabelTool:
 
     def rotate_clockwise(self):
         self.rotated_degree -= 1
+        self.lbl_rotate.config(text='{}°'.format(self.rotated_degree))
         self.draw()
 
     def rotate_counterclockwise(self):
         self.rotated_degree += 1
+        self.lbl_rotate.config(text='{}°'.format(self.rotated_degree))
+        self.draw()
+
+    def zoom_in(self):
+        if self.cur_scale >= 2.0 - 1e-5:
+            return
+        self.cur_scale += 0.1
+        self.lbl_scale.config(text='{}%'.format(self.cur_scale * 100))
+        self.draw()
+
+    def zoom_out(self):
+        if self.cur_scale <= 0.5 + 1e-5:
+            return
+        self.cur_scale -= 0.1
+        self.lbl_scale.config(text='{}%'.format(self.cur_scale * 100))
         self.draw()
 
     def get_class_color(self, cls):
