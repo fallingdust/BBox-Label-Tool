@@ -8,6 +8,10 @@ from PIL import Image, ImageTk
 import os
 import glob
 import math
+import threading
+import time
+
+import service
 
 # colors for the bboxes
 # COLORS = ['red', 'blue', 'yellow', 'pink', 'cyan', 'green', 'black']
@@ -39,11 +43,11 @@ class LabelTool:
         self.tkimg = None
         self.img = None
         self.rotated_degree = 0
-        self.cur_class_idx = -1
+        self.cur_class_name = None
         self.truncated = IntVar()
         self.classes = None
+        self.class_last_modify_time = 0
         self.cur_scale = 1.0
-        self.load_classes()
 
         # initialize mouse state
         self.STATE = {
@@ -84,7 +88,6 @@ class LabelTool:
         self.lb_class.bind('<<ListboxSelect>>', self.on_class_select)
         scrollbar.pack(side=RIGHT, fill=Y)
         self.lb_class.pack(side=LEFT, fill=Y)
-        self.show_class_list()
 
         self.pnl_add = Frame(self.pnl_left)
         self.pnl_add.pack(anchor=W, fill=X)
@@ -230,30 +233,92 @@ class LabelTool:
         new_class = self.txt_class.get().strip().encode('utf-8')
         if not new_class:
             return
+        try:
+            result = service.add_class(new_class)
+        except service.ServiceException, e:
+            tkMessageBox.showerror('添加分类失败', e.message)
+            return
+        self.class_last_modify_time = result['modifyTime']
         self.classes.append(new_class)
         self.classes.sort()
         index = self.classes.index(new_class)
         self.txt_class.delete(0, END)
         self.show_class_list()
         self.lb_class.see(index)
-        self.save_classes()
 
     def remove_class(self):
         sel = self.lb_class.curselection()
         if len(sel) != 1:
             return
         idx = int(sel[0])
+        class_name = self.lb_class.get(idx).encode('utf-8')
+        if not tkMessageBox.askyesno('确认删除分类', class_name):
+            return
+        try:
+            result = service.remove_class(class_name)
+        except service.ServiceException, e:
+            tkMessageBox.showerror('删除分类失败', e.message)
+            return
+        self.class_last_modify_time = result['modifyTime']
         self.classes.pop(idx)
         self.lb_class.delete(idx)
-        self.save_classes()
+        self.cur_class_name = None
 
     def load_classes(self):
-        with open('classes.txt') as f:
-            self.classes = [line.strip() for line in f.readlines() if line]
+        # with open('classes.txt') as f:
+        #     self.classes = [line.strip() for line in f.readlines() if line]
+        try:
+            skus, last_modify_time = service.get_all_classes()
+        except service.ServiceException, e:
+            tkMessageBox.showerror('加载分类失败', e.message)
+            return
+        self.class_last_modify_time = last_modify_time
+        self.classes = [sku['name'].encode('utf-8') for sku in skus]
+        self.classes.sort()
+        self.show_class_list()
+        t = threading.Thread(target=self.load_classes_periodically)
+        t.setDaemon(True)
+        t.start()
 
-    def save_classes(self):
-        with open('classes.txt', 'w') as f:
-            f.writelines([cls + '\n' for cls in self.classes])
+    def load_classes_periodically(self):
+        while True:
+            time.sleep(5)
+            self.load_classes_incrementally()
+
+    def load_classes_incrementally(self):
+        try:
+            classes_modified, last_modify_time = service.get_all_classes(self.class_last_modify_time)
+        except service.ServiceException, e:
+            tkMessageBox.showerror('更新分类失败', e.message)
+            return
+        if not classes_modified:
+            return
+        self.class_last_modify_time = last_modify_time
+        classes_removed = []
+        classes_added = []
+        for cls in classes_modified:
+            class_name = cls['name'].encode('utf-8')
+            if cls['deleted']:
+                if class_name in self.classes:
+                    classes_removed.append(class_name)
+                    self.classes.remove(class_name)
+            else:
+                if class_name not in self.classes:
+                    classes_added.append(class_name)
+                    self.classes.append(class_name)
+        if classes_removed or classes_added:
+            self.classes.sort()
+            self.show_class_list()
+            msgs = []
+            if classes_added:
+                msgs.append('新增分类：' + '、'.join(classes_added))
+            if classes_removed:
+                msgs.append('删除分类：' + '、'.join(classes_removed))
+            tkMessageBox.showinfo('分类变动', '\n'.join(msgs))
+
+    # def save_classes(self):
+    #     with open('classes.txt', 'w') as f:
+    #         f.writelines([cls + '\n' for cls in self.classes])
 
     def show_class_list(self):
         self.lb_class.delete(0, END)
@@ -287,7 +352,7 @@ class LabelTool:
 
         for bbox in self.bboxList:
             cls = bbox['class']
-            if self.cur_class_idx > -1 and self.classes[self.cur_class_idx] != cls:
+            if self.cur_class_name and self.cur_class_name != cls:
                 continue
             tmp = bbox['bbox']
             if not ROTATE_IMAGE and self.rotated_degree != 0:
@@ -388,6 +453,9 @@ class LabelTool:
         if self.cur_scale < 1 - 1e-5:
             tkMessageBox.showwarning('禁止标注', '不允许在小图上进行标注操作')
             return
+        if not self.cur_class_name:
+            tkMessageBox.showwarning('非法错误', '请先在左边选择分类后再进行标注')
+            return
         x = int(self.canvas.canvasx(event.x))
         y = int(self.canvas.canvasy(event.y))
         if self.STATE['click'] == 0:
@@ -400,7 +468,7 @@ class LabelTool:
                 x2 = int(round(float(x2) / self.cur_scale))
                 y1 = int(round(float(y1) / self.cur_scale))
                 y2 = int(round(float(y2) / self.cur_scale))
-            cls = self.classes[self.cur_class_idx]
+            cls = self.cur_class_name
             self.bboxList.append({
                 'class': cls,
                 'bbox': (x1, y1, x2, y2),
@@ -409,7 +477,7 @@ class LabelTool:
             self.rect_ids.append(self.bboxId)
             self.bboxId = None
             self.listbox.insert(END, '%s (%d, %d, %d, %d)' % (cls, x1, y1, x2, y2))
-            self.listbox.itemconfig(END, fg=self.get_class_color(self.classes[self.cur_class_idx]))
+            self.listbox.itemconfig(END, fg=self.get_class_color(self.cur_class_name))
         self.STATE['click'] = 1 - self.STATE['click']
 
     def mouse_move(self, event):
@@ -427,7 +495,7 @@ class LabelTool:
             if self.bboxId:
                 self.canvas.delete(self.bboxId)
             self.bboxId = self.canvas.create_rectangle(self.STATE['x'], self.STATE['y'], x, y, width=1,
-                                                          outline=self.get_class_color(self.classes[self.cur_class_idx]),
+                                                          outline=self.get_class_color(self.cur_class_name),
                                                           dash=(3, 4) if self.truncated.get() else None)
 
     def mouse_wheel_v(self, event):
@@ -487,7 +555,7 @@ class LabelTool:
 
     def show_all(self, event=None):
         self.lb_class.select_clear(0, self.lb_class.size() - 1)
-        self.cur_class_idx = -1
+        self.cur_class_name = None
         for i, item in enumerate(self.bboxList):
             cls = item['class']
             bbox = item['bbox']
@@ -524,23 +592,17 @@ class LabelTool:
             truncated = item['truncated']
             self.draw_bbox(cls, bbox, truncated)
 
-    # def on_num_press(self, event):
-    #     self.cur_class_idx = int(event.char) - 1
-    #     self.lb_class.select_clear(0, self.lb_class.size() - 1)
-    #     self.lb_class.selection_set(self.cur_class_idx)
-
     def on_class_select(self, event):
         sel = self.lb_class.curselection()
         if len(sel) != 1:
             return
         index = int(sel[0])
-        cur_class_name = self.lb_class.get(index).encode('utf-8')
-        self.cur_class_idx = self.classes.index(cur_class_name)
+        self.cur_class_name = self.lb_class.get(index).encode('utf-8')
         # change bbox classes if needed
         if len(self.indexes_to_change) > 0:
             for idx in self.indexes_to_change:
                 old_class = self.bboxList[idx]['class']
-                new_class = cur_class_name
+                new_class = self.cur_class_name
                 self.bboxList[idx]['class'] = new_class
                 new_text = self.listbox.get(idx).encode('utf-8').replace(old_class, new_class)
                 self.listbox.delete(idx)
@@ -550,7 +612,7 @@ class LabelTool:
         # mark the bbox list items selected
         self.listbox.select_clear(0, END)
         for i in range(self.listbox.size()):
-            if cur_class_name in self.listbox.get(i).encode('utf-8'):
+            if self.cur_class_name in self.listbox.get(i).encode('utf-8'):
                 self.listbox.select_set(i)
         # redraw the selected rectangles
         self.draw()
