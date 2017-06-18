@@ -84,7 +84,7 @@ class LabelTool:
         self.lb_class.bind('<<ListboxSelect>>', self.on_class_select)
         scrollbar.pack(side=RIGHT, fill=Y)
         self.lb_class.pack(side=LEFT, fill=Y)
-        self.load_class_list()
+        self.show_class_list()
 
         self.pnl_add = Frame(self.pnl_left)
         self.pnl_add.pack(anchor=W, fill=X)
@@ -185,6 +185,15 @@ class LabelTool:
         self.parent.bind("t", self.change_truncated)
         # for i in range(len(self.classes)):
         #     self.parent.bind(str(i + 1), self.on_num_press)
+        # with Windows OS
+        self.parent.bind_all("<MouseWheel>", self.mouse_wheel_v)
+        self.parent.bind_all("<Shift-MouseWheel>", self.mouse_wheel_h)
+        self.parent.bind_all("<Control-MouseWheel>", self.mouse_zoom)
+        # with Linux OS
+        # self.canvas.bind("<Button-4>", self.mouse_wheel)
+        # self.canvas.bind("<Button-5>", self.mouse_wheel)
+
+        self.load_classes()
         self.parent.after(100, self.choose_dir)
 
     def choose_dir(self, event=None):
@@ -198,9 +207,9 @@ class LabelTool:
         #     return
         # get image list
         self.imageDir = os.path.join(self.rootDir, 'images')
-        self.imageList = glob.glob(os.path.join(self.imageDir, '*.jpg'))
+        self.imageList = sorted(glob.glob(os.path.join(self.imageDir, '*.jpg')))
         if len(self.imageList) == 0:
-            self.imageList = glob.glob(os.path.join(self.imageDir, '*.png'))
+            self.imageList = sorted(glob.glob(os.path.join(self.imageDir, '*.png')))
         if len(self.imageList) == 0:
             print 'No images found in the specified dir!'
             return
@@ -223,8 +232,10 @@ class LabelTool:
             return
         self.classes.append(new_class)
         self.classes.sort()
+        index = self.classes.index(new_class)
         self.txt_class.delete(0, END)
-        self.load_class_list()
+        self.show_class_list()
+        self.lb_class.see(index)
         self.save_classes()
 
     def remove_class(self):
@@ -244,7 +255,7 @@ class LabelTool:
         with open('classes.txt', 'w') as f:
             f.writelines([cls + '\n' for cls in self.classes])
 
-    def load_class_list(self):
+    def show_class_list(self):
         self.lb_class.delete(0, END)
         for cls in self.classes:
             self.lb_class.insert(END, '{}'.format(cls))
@@ -419,6 +430,21 @@ class LabelTool:
                                                           outline=self.get_class_color(self.classes[self.cur_class_idx]),
                                                           dash=(3, 4) if self.truncated.get() else None)
 
+    def mouse_wheel_v(self, event):
+        if event.state == 1 or event.state == 4:  # Shift or Control key is pressed
+            return
+        widget = self.parent.winfo_containing(event.x_root, event.y_root)
+        if widget == self.canvas:
+            widget.focus_force()  # fix bug on Windows: left listbox scrolls if it has focus
+            delta = -1 if event.delta > 0 else 1
+            widget.yview_scroll(delta, 'units')
+
+    def mouse_wheel_h(self, event):
+        widget = self.parent.winfo_containing(event.x_root, event.y_root)
+        if widget == self.canvas:
+            delta = -1 if event.delta > 0 else 1
+            event.widget.xview_scroll(delta, 'units')
+
     def cancel_bbox(self, event):
         if 1 == self.STATE['click']:
             if self.bboxId:
@@ -507,20 +533,21 @@ class LabelTool:
         sel = self.lb_class.curselection()
         if len(sel) != 1:
             return
-        self.cur_class_idx = int(sel[0])
+        index = int(sel[0])
+        cur_class_name = self.lb_class.get(index).encode('utf-8')
+        self.cur_class_idx = self.classes.index(cur_class_name)
         # change bbox classes if needed
         if len(self.indexes_to_change) > 0:
             for idx in self.indexes_to_change:
                 old_class = self.bboxList[idx]['class']
-                new_class = self.classes[self.cur_class_idx]
+                new_class = cur_class_name
                 self.bboxList[idx]['class'] = new_class
-                new_text = self.listbox.get(idx).replace(old_class, new_class)
+                new_text = self.listbox.get(idx).encode('utf-8').replace(old_class, new_class)
                 self.listbox.delete(idx)
                 self.listbox.insert(idx, new_text)
                 self.listbox.itemconfig(idx, fg=self.get_class_color(new_class))
             del self.indexes_to_change[:]
         # mark the bbox list items selected
-        cur_class_name = self.classes[self.cur_class_idx]
         self.listbox.select_clear(0, END)
         for i in range(self.listbox.size()):
             if cur_class_name in self.listbox.get(i).encode('utf-8'):
@@ -554,6 +581,14 @@ class LabelTool:
         self.cur_scale -= 0.1
         self.lbl_scale.config(text='{}%'.format(self.cur_scale * 100))
         self.draw()
+
+    def mouse_zoom(self, event):
+        widget = self.parent.winfo_containing(event.x_root, event.y_root)
+        if widget == self.canvas:
+            if event.delta > 0:
+                self.zoom_in()
+            else:
+                self.zoom_out()
 
     def get_class_color(self, cls):
         return CLASS_COLORS[self.classes.index(cls) % len(CLASS_COLORS)]
