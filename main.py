@@ -24,7 +24,7 @@ class LabelTool:
     def __init__(self, master):
         # set up the main frame
         self.parent = master
-        self.parent.title("Annotation Tool")
+        self.parent.title("商品标注工具(在线版)")
         self.frame = Frame(self.parent)
         self.frame.pack(fill=BOTH, expand=1)
         self.parent.resizable(width=FALSE, height=FALSE)
@@ -63,6 +63,7 @@ class LabelTool:
         self.indexes_to_change = []
         self.hl = None
         self.vl = None
+        self.annotation_changed = False
 
         # ----------------- GUI stuff ---------------------
         # dir entry & load
@@ -73,7 +74,7 @@ class LabelTool:
         self.pnl_left = Frame(self.frame)
         self.pnl_left.grid(row=0, column=0, sticky=W+N+S, padx=5)
 
-        self.lbl_class = Label(self.pnl_left, text='Choose object class:')
+        self.lbl_class = Label(self.pnl_left, text='选择分类:')
         self.lbl_class.pack(anchor=W)
 
         sv_search = StringVar()
@@ -93,13 +94,13 @@ class LabelTool:
         self.pnl_add.pack(anchor=W, fill=X)
         self.txt_class = Entry(self.pnl_add, width=15)
         self.txt_class.pack(side=LEFT, expand=True, fill=X)
-        self.btn_add = Button(self.pnl_add, text="Add", command=self.add_class)
+        self.btn_add = Button(self.pnl_add, text="添加", command=self.add_class)
         self.btn_add.pack(side=RIGHT)
 
-        self.btn_del = Button(self.pnl_left, text="Delete", command=self.remove_class)
+        self.btn_del = Button(self.pnl_left, text="删除", command=self.remove_class)
         self.btn_del.pack(anchor=W, fill=X)
 
-        self.chk_truncated = Checkbutton(self.pnl_left, text="Truncated(t)", variable=self.truncated)
+        self.chk_truncated = Checkbutton(self.pnl_left, text="显示不全(t)", variable=self.truncated)
         self.chk_truncated.pack(anchor=W)
 
         self.pnl_rotate = Frame(self.pnl_left)
@@ -140,7 +141,7 @@ class LabelTool:
         self.pnl_right = Frame(self.frame)
         self.pnl_right.grid(row=0, column=2, sticky=E+N+S, padx=5)
 
-        self.lb1 = Label(self.pnl_right, text='Bounding boxes:')
+        self.lb1 = Label(self.pnl_right, text='标注结果:')
         self.lb1.pack(anchor=W)
         pnl = Frame(self.pnl_right)
         pnl.pack(fill=Y, expand=True)
@@ -150,34 +151,37 @@ class LabelTool:
         self.listbox.bind('<<ListboxSelect>>', self.on_select)
         scrollbar.pack(side=RIGHT, fill=Y)
         self.listbox.pack(side=LEFT, fill=Y)
-        self.btnDel = Button(self.pnl_right, text='Delete', command=self.del_bbox)
+        self.btnDel = Button(self.pnl_right, text='删除', command=self.del_bbox)
         self.btnDel.pack(anchor=W, fill=X)
-        self.btnClear = Button(self.pnl_right, text='Change Class', command=self.change_class)
+        self.btnClear = Button(self.pnl_right, text='更改分类', command=self.change_class)
         self.btnClear.pack(anchor=W, fill=X)
-        self.btnHideAll = Button(self.pnl_right, text="Hide All", command=self.hide_all)
+        self.btnHideAll = Button(self.pnl_right, text="隐藏所有", command=self.hide_all)
         self.btnHideAll.pack(anchor=W, fill=X)
-        self.btnShowAll = Button(self.pnl_right, text="Show All", command=self.show_all)
+        self.btnShowAll = Button(self.pnl_right, text="显示所有", command=self.show_all)
         self.btnShowAll.pack(anchor=W, fill=X)
 
         # control panel for image navigation
         self.pnl_bottom = Frame(self.frame)
         self.pnl_bottom.grid(row=1, column=0, columnspan=3, sticky=W+E)
-        self.prevBtn = Button(self.pnl_bottom, text='<< Prev', width=10, command=self.prev_image)
+        self.prevBtn = Button(self.pnl_bottom, text='<< 上一张', width=10, command=self.prev_image)
         self.prevBtn.pack(side=LEFT, padx=5, pady=3)
-        self.nextBtn = Button(self.pnl_bottom, text='Next >>', width=10, command=self.next_image)
+        self.nextBtn = Button(self.pnl_bottom, text='下一张 >>', width=10, command=self.next_image)
         self.nextBtn.pack(side=LEFT, padx=5, pady=3)
         self.progLabel = Label(self.pnl_bottom, text="Progress:     /    ")
         self.progLabel.pack(side=LEFT, padx=5)
-        self.tmpLabel = Label(self.pnl_bottom, text="Go to Image No.")
+        self.tmpLabel = Label(self.pnl_bottom, text="跳转到")
         self.tmpLabel.pack(side=LEFT, padx=5)
         self.idxEntry = Entry(self.pnl_bottom, width=5)
         self.idxEntry.pack(side=LEFT)
         self.goBtn = Button(self.pnl_bottom, text='Go', command=self.goto_image)
         self.goBtn.pack(side=LEFT)
-
         # display mouse position
         self.disp = Label(self.pnl_bottom, text='')
-        self.disp.pack(side=RIGHT)
+        self.disp.pack(side=LEFT)
+        self.btn_submit = Button(self.pnl_bottom, text='提交', width=24, command=self.save_annotation)
+        self.btn_submit.pack(side=RIGHT, padx=5)
+        self.lbl_status = Label(self.pnl_bottom, text='')
+        self.lbl_status.pack(side=RIGHT)
 
         self.frame.columnconfigure(1, weight=1)
         self.frame.rowconfigure(0, weight=1)
@@ -413,41 +417,57 @@ class LabelTool:
         # load labels
         self.clear_bbox()
         self.imagename = os.path.split(imagepath)[-1].split('.')[0]
-        labelname = self.imagename + '.txt'
-        self.labelfilename = os.path.join(self.outDir, labelname)
-        if os.path.exists(self.labelfilename):
-            with open(self.labelfilename) as f:
-                for (i, line) in enumerate(f):
-                    parts = line.split()
-                    cls = parts[0]
-                    if cls == 'rotate':
-                        self.rotated_degree = int(parts[1])
-                        continue
-                    tmp = [int(t.strip()) for t in parts[1:5]]
-                    truncated = 1 if len(parts) >= 6 and parts[5] == '1' else 0
-                    self.bboxList.append({
-                        'class': cls,
-                        'bbox': tuple(tmp),
-                        'truncated': truncated
-                    })
+        try:
+            annotation = service.get_annotation(self.imagename)
+        except service.ServiceException, e:
+            tkMessageBox.showerror('加载标注信息失败', e.message)
+            return
+        if annotation:
+            self.rotated_degree = annotation['rotate']
+            for bbox in annotation['bboxes']:
+                self.bboxList.append({
+                    'class': bbox['className'].encode('utf-8'),
+                    'bbox': (bbox['x1'], bbox['y1'], bbox['x2'], bbox['y2']),
+                    'truncated': bbox['truncated']
+                })
             self.bboxList.sort(key=lambda bbox: bbox['class'])
             for bbox in self.bboxList:
                 cls = bbox['class']
                 tmp = bbox['bbox']
                 self.listbox.insert(END, '%s (%d, %d, %d, %d)' % (cls, tmp[0], tmp[1], tmp[2], tmp[3]))
                 self.listbox.itemconfig(END, fg=self.get_class_color(cls))
-
         self.draw()
+        self.annotation_changed = False
 
-    def save_image(self):
+    def save_annotation_if_needed(self):
+        if self.annotation_changed and tkMessageBox.askyesno('是否提交', '你已修改了当前图片的标注信息，在离开前是否提交保存？'):
+            self.save_annotation()
+
+    def save_annotation(self):
+        if not self.annotation_changed:
+            return
         self.bboxList.sort(key=lambda bbox: bbox['class'])
-        with open(self.labelfilename, 'w') as f:
-            f.write('rotate {}\n'.format(self.rotated_degree))
-            for i, item in enumerate(self.bboxList):
-                f.write(item['class'] + ' ' + ' '.join(map(str, item['bbox'])) + (' 1' if item['truncated'] else ' 0'))
-                if i < len(self.bboxList) - 1:
-                    f.write('\n')
-        print 'Image No. %d saved' % self.cur
+        bboxes = []
+        for bbox in self.bboxList:
+            bboxes.append({
+                'className': bbox['class'],
+                'x1': bbox['bbox'][0],
+                'y1': bbox['bbox'][1],
+                'x2': bbox['bbox'][2],
+                'y2': bbox['bbox'][3],
+                'truncated': bbox['truncated']
+            })
+        annotation = {
+            'image': self.imagename,
+            'rotate': self.rotated_degree,
+            'bboxes': bboxes
+        }
+        try:
+            if service.save_annotation(annotation):
+                self.annotation_changed = False
+                print 'Image No. %d saved' % self.cur
+        except service.ServiceException, e:
+            tkMessageBox.showerror('保存标注信息失败', e.message)
 
     def mouse_click(self, event):
         if self.cur_scale < 1 - 1e-5:
@@ -478,6 +498,7 @@ class LabelTool:
             self.bboxId = None
             self.listbox.insert(END, '%s (%d, %d, %d, %d)' % (cls, x1, y1, x2, y2))
             self.listbox.itemconfig(END, fg=self.get_class_color(self.cur_class_name))
+            self.annotation_changed = True
         self.STATE['click'] = 1 - self.STATE['click']
 
     def mouse_move(self, event):
@@ -529,6 +550,7 @@ class LabelTool:
             idx = int(idx)
             self.bboxList.pop(idx)
             self.listbox.delete(idx)
+            self.annotation_changed = True
         for rect_id in self.rect_ids:
             self.canvas.delete(rect_id)
         del self.rect_ids[:]
@@ -563,13 +585,13 @@ class LabelTool:
             self.draw_bbox(cls, bbox, truncated)
 
     def prev_image(self, event=None):
-        self.save_image()
+        self.save_annotation_if_needed()
         if self.cur > 1:
             self.cur -= 1
             self.load_image()
 
     def next_image(self, event=None):
-        self.save_image()
+        self.save_annotation_if_needed()
         if self.cur < self.total:
             self.cur += 1
             self.load_image()
@@ -577,7 +599,7 @@ class LabelTool:
     def goto_image(self, event=None):
         idx = int(self.idxEntry.get())
         if 1 <= idx <= self.total:
-            self.save_image()
+            self.save_annotation_if_needed()
             self.cur = idx
             self.load_image()
 
@@ -608,6 +630,7 @@ class LabelTool:
                 self.listbox.delete(idx)
                 self.listbox.insert(idx, new_text)
                 self.listbox.itemconfig(idx, fg=self.get_class_color(new_class))
+                self.annotation_changed = True
             del self.indexes_to_change[:]
         # mark the bbox list items selected
         self.listbox.select_clear(0, END)
@@ -624,11 +647,13 @@ class LabelTool:
         self.rotated_degree -= 1
         self.lbl_rotate.config(text='{}°'.format(self.rotated_degree))
         self.draw()
+        self.annotation_changed = True
 
     def rotate_counterclockwise(self):
         self.rotated_degree += 1
         self.lbl_rotate.config(text='{}°'.format(self.rotated_degree))
         self.draw()
+        self.annotation_changed = True
 
     def zoom_in(self):
         if self.cur_scale >= 2.0 - 1e-5:
