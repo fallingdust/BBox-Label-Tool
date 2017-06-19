@@ -8,8 +8,6 @@ from PIL import Image, ImageTk
 import os
 import glob
 import math
-import threading
-import time
 
 import service
 
@@ -178,7 +176,7 @@ class LabelTool:
         # display mouse position
         self.disp = Label(self.pnl_bottom, text='')
         self.disp.pack(side=LEFT)
-        self.btn_submit = Button(self.pnl_bottom, text='提交', width=24, command=self.save_annotation)
+        self.btn_submit = Button(self.pnl_bottom, text='提交', width=23, command=self.save_annotation)
         self.btn_submit.pack(side=RIGHT, padx=5)
         self.lbl_status = Label(self.pnl_bottom, text='')
         self.lbl_status.pack(side=RIGHT)
@@ -256,7 +254,7 @@ class LabelTool:
             return
         idx = int(sel[0])
         class_name = self.lb_class.get(idx).encode('utf-8')
-        if not tkMessageBox.askyesno('确认删除分类', class_name):
+        if not tkMessageBox.askyesno('确认删除', '确认删除分类 {} ？'.format(class_name)):
             return
         try:
             result = service.remove_class(class_name)
@@ -280,16 +278,10 @@ class LabelTool:
         self.classes = [sku['name'].encode('utf-8') for sku in skus]
         self.classes.sort()
         self.show_class_list()
-        t = threading.Thread(target=self.load_classes_periodically)
-        t.setDaemon(True)
-        t.start()
-
-    def load_classes_periodically(self):
-        while True:
-            time.sleep(5)
-            self.load_classes_incrementally()
+        self.parent.after(5000, self.load_classes_incrementally)
 
     def load_classes_incrementally(self):
+        self.parent.after(5000, self.load_classes_incrementally)
         try:
             classes_modified, last_modify_time = service.get_all_classes(self.class_last_modify_time)
         except service.ServiceException, e:
@@ -318,7 +310,7 @@ class LabelTool:
                 msgs.append('新增分类：' + '、'.join(classes_added))
             if classes_removed:
                 msgs.append('删除分类：' + '、'.join(classes_removed))
-            tkMessageBox.showinfo('分类变动', '\n'.join(msgs))
+            tkMessageBox.showinfo('分类更新', '\n'.join(msgs))
 
     # def save_classes(self):
     #     with open('classes.txt', 'w') as f:
@@ -474,7 +466,7 @@ class LabelTool:
             tkMessageBox.showwarning('禁止标注', '不允许在小图上进行标注操作')
             return
         if not self.cur_class_name:
-            tkMessageBox.showwarning('非法错误', '请先在左边选择分类后再进行标注')
+            tkMessageBox.showwarning('非法操作', '请先在左边选择分类后再进行标注')
             return
         x = int(self.canvas.canvasx(event.x))
         y = int(self.canvas.canvasy(event.y))
