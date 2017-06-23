@@ -195,8 +195,8 @@ class LabelTool:
         self.parent.bind_all("<Shift-MouseWheel>", self.mouse_wheel_h)
         self.parent.bind_all("<Control-MouseWheel>", self.mouse_zoom)
         # with Linux OS
-        # self.canvas.bind("<Button-4>", self.mouse_wheel)
-        # self.canvas.bind("<Button-5>", self.mouse_wheel)
+        self.canvas.bind("<Button-4>", self.mouse_wheel_v)
+        self.canvas.bind("<Button-5>", self.mouse_wheel_v)
 
         self.load_classes()
         self.parent.after(100, self.choose_dir)
@@ -517,7 +517,10 @@ class LabelTool:
         widget = self.parent.winfo_containing(event.x_root, event.y_root)
         if widget == self.canvas:
             widget.focus_force()  # fix bug on Windows: left listbox scrolls if it has focus
-            delta = -1 if event.delta > 0 else 1
+            if event.delta != 0:
+                delta = -1 if event.delta > 0 else 1
+            else:  # linux
+                delta = -1 if event.num == 4 else 1
             widget.yview_scroll(delta, 'units')
 
     def mouse_wheel_h(self, event):
