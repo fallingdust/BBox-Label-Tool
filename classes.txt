@@ -4,6 +4,7 @@ aquarius_orange_600
 aquarius_peach_600
 aquarius_unknow_600
 chivalry_darkplum_600
+chivalry_litchi_250
 chivalry_saltedsoda_600
 cola_1250
 cola_2000
@@ -50,6 +51,7 @@ minutemaid_purelemon_350
 minutemaid_pureorange_350
 minutemaid_qoo_apple_300
 minutemaid_qoo_orange_300
+minutemaid_qoo_unkown_300
 minutemaid_tropic_450
 minutemaid_unknow_450
 monster
