@@ -43,7 +43,6 @@ class LabelTool:
         self.truncated = IntVar()
         self.classes = None
         self.cur_scale = 1.0
-        self.load_classes()
 
         # initialize mouse state
         self.STATE = {
@@ -84,7 +83,6 @@ class LabelTool:
         self.lb_class.bind('<<ListboxSelect>>', self.on_class_select)
         scrollbar.pack(side=RIGHT, fill=Y)
         self.lb_class.pack(side=LEFT, fill=Y)
-        self.show_class_list()
 
         self.pnl_add = Frame(self.pnl_left)
         self.pnl_add.pack(anchor=W, fill=X)
@@ -193,11 +191,11 @@ class LabelTool:
         # self.canvas.bind("<Button-4>", self.mouse_wheel)
         # self.canvas.bind("<Button-5>", self.mouse_wheel)
 
-        self.load_classes()
         self.parent.after(100, self.choose_dir)
 
     def choose_dir(self, event=None):
         self.rootDir = tkFileDialog.askdirectory()
+        self.load_classes()
         self.load_dir()
 
     def load_dir(self):
@@ -248,11 +246,12 @@ class LabelTool:
         self.save_classes()
 
     def load_classes(self):
-        with open('classes.txt') as f:
+        with open(os.path.join(self.rootDir, 'classes.txt')) as f:
             self.classes = [line.strip() for line in f.readlines() if line]
+        self.show_class_list()
 
     def save_classes(self):
-        with open('classes.txt', 'w') as f:
+        with open(os.path.join(self.rootDir, 'classes.txt'), 'w') as f:
             f.writelines([cls + '\n' for cls in self.classes])
 
     def show_class_list(self):
