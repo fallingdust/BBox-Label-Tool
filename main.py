@@ -16,6 +16,7 @@ import service
 
 CLASS_COLORS = ['red', 'blue', 'brown', 'green', 'salmon', 'cyan', 'gold', 'orange', 'purple', 'violet', 'tomato', 'sky blue']
 ROTATE_IMAGE = True
+CHECK_SKU_INTERVAL = 60000
 
 
 class LabelTool:
@@ -278,10 +279,10 @@ class LabelTool:
         self.classes = [sku['name'].encode('utf-8') for sku in skus]
         self.classes.sort()
         self.show_class_list()
-        self.parent.after(5000, self.load_classes_incrementally)
+        self.parent.after(CHECK_SKU_INTERVAL, self.load_classes_incrementally)
 
     def load_classes_incrementally(self):
-        self.parent.after(5000, self.load_classes_incrementally)
+        self.parent.after(CHECK_SKU_INTERVAL, self.load_classes_incrementally)
         try:
             classes_modified, last_modify_time = service.get_all_classes(self.class_last_modify_time)
         except service.ServiceException, e:

@@ -4,7 +4,7 @@
 import requests
 
 # BASE_URL = 'http://coca.localhost'
-BASE_URL = 'http://ubuntu.zhixiang.co:8080'
+BASE_URL = 'http://192.168.3.2:8080'
 
 
 class ServiceException(Exception):
