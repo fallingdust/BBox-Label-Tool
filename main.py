@@ -147,8 +147,12 @@ class LabelTool:
         self.listbox.pack(side=LEFT, fill=Y)
         self.btnDel = Button(self.pnl_right, text='Delete', command=self.del_bbox)
         self.btnDel.pack(anchor=W, fill=X)
-        self.btnClear = Button(self.pnl_right, text='Change Class', command=self.change_class)
-        self.btnClear.pack(anchor=W, fill=X)
+        self.btnChangeClass = Button(self.pnl_right, text='Change Class', command=self.change_class)
+        self.btnChangeClass.pack(anchor=W, fill=X)
+        self.btnChangeSize = Button(self.pnl_right, text='Change Size', command=self.change_size)
+        self.btnChangeSize.pack(anchor=W, fill=X)
+        self.btnChangeTruncated = Button(self.pnl_right, text='Toggle Truncated', command=self.toggle_truncated)
+        self.btnChangeTruncated.pack(anchor=W, fill=X)
         self.btnHideAll = Button(self.pnl_right, text="Hide All", command=self.hide_all)
         self.btnHideAll.pack(anchor=W, fill=X)
         self.btnShowAll = Button(self.pnl_right, text="Show All", command=self.show_all)
@@ -472,6 +476,27 @@ class LabelTool:
             idx = int(idx)
             self.indexes_to_change.append(idx)
 
+    def change_size(self, event=None):
+        sel = self.listbox.curselection()
+        if len(sel) != 1:
+            return
+        idx = int(sel[0])
+        self.cur_class_idx = self.classes.index(self.bboxList[idx]['class'])
+        self.bboxList.pop(idx)
+        self.listbox.delete(idx)
+        for rect_id in self.rect_ids:
+            self.canvas.delete(rect_id)
+        del self.rect_ids[:]
+
+    def toggle_truncated(self, event=None):
+        sel = self.listbox.curselection()
+        if len(sel) <= 0:
+            return
+        for idx in sel:
+            idx = int(idx)
+            self.bboxList[idx]['truncated'] = 1 - self.bboxList[idx]['truncated']
+        self.on_select()
+
     def clear_bbox(self, event=None):
         for idx in range(len(self.rect_ids)):
             self.canvas.delete(self.rect_ids[idx])
@@ -512,7 +537,7 @@ class LabelTool:
             self.cur = idx
             self.load_image()
 
-    def on_select(self, event):
+    def on_select(self, event=None):
         self.hide_all()
         sel = self.listbox.curselection()
         for idx in sel:
