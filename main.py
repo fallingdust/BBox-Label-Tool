@@ -152,8 +152,12 @@ class LabelTool:
         self.listbox.pack(side=LEFT, fill=Y)
         self.btnDel = Button(self.pnl_right, text='删除', command=self.del_bbox)
         self.btnDel.pack(anchor=W, fill=X)
-        self.btnClear = Button(self.pnl_right, text='更改分类', command=self.change_class)
-        self.btnClear.pack(anchor=W, fill=X)
+        self.btnChangeClass = Button(self.pnl_right, text='更改分类', command=self.change_class)
+        self.btnChangeClass.pack(anchor=W, fill=X)
+        self.btnChangeSize = Button(self.pnl_right, text='更改大小', command=self.change_size)
+        self.btnChangeSize.pack(anchor=W, fill=X)
+        self.btnChangeTruncated = Button(self.pnl_right, text='切换虚实', command=self.toggle_truncated)
+        self.btnChangeTruncated.pack(anchor=W, fill=X)
         self.btnHideAll = Button(self.pnl_right, text="隐藏所有", command=self.hide_all)
         self.btnHideAll.pack(anchor=W, fill=X)
         self.btnShowAll = Button(self.pnl_right, text="显示所有", command=self.show_all)
@@ -199,11 +203,11 @@ class LabelTool:
         self.canvas.bind("<Button-4>", self.mouse_wheel_v)
         self.canvas.bind("<Button-5>", self.mouse_wheel_v)
 
-        self.load_classes()
         self.parent.after(100, self.choose_dir)
 
     def choose_dir(self, event=None):
         self.rootDir = tkFileDialog.askdirectory()
+        self.load_classes()
         self.load_dir()
 
     def load_dir(self):
@@ -559,6 +563,27 @@ class LabelTool:
             idx = int(idx)
             self.indexes_to_change.append(idx)
 
+    def change_size(self, event=None):
+        sel = self.listbox.curselection()
+        if len(sel) != 1:
+            return
+        idx = int(sel[0])
+        self.cur_class_idx = self.classes.index(self.bboxList[idx]['class'])
+        self.bboxList.pop(idx)
+        self.listbox.delete(idx)
+        for rect_id in self.rect_ids:
+            self.canvas.delete(rect_id)
+        del self.rect_ids[:]
+
+    def toggle_truncated(self, event=None):
+        sel = self.listbox.curselection()
+        if len(sel) <= 0:
+            return
+        for idx in sel:
+            idx = int(idx)
+            self.bboxList[idx]['truncated'] = 1 - self.bboxList[idx]['truncated']
+        self.on_select()
+
     def clear_bbox(self, event=None):
         for idx in range(len(self.rect_ids)):
             self.canvas.delete(self.rect_ids[idx])
@@ -599,7 +624,7 @@ class LabelTool:
             self.cur = idx
             self.load_image()
 
-    def on_select(self, event):
+    def on_select(self, event=None):
         self.hide_all()
         sel = self.listbox.curselection()
         for idx in sel:
