@@ -568,7 +568,7 @@ class LabelTool:
         if len(sel) != 1:
             return
         idx = int(sel[0])
-        self.cur_class_idx = self.classes.index(self.bboxList[idx]['class'])
+        self.cur_class_name = self.bboxList[idx]['class']
         self.bboxList.pop(idx)
         self.listbox.delete(idx)
         for rect_id in self.rect_ids:
@@ -582,6 +582,7 @@ class LabelTool:
         for idx in sel:
             idx = int(idx)
             self.bboxList[idx]['truncated'] = 1 - self.bboxList[idx]['truncated']
+        self.annotation_changed = True
         self.on_select()
 
     def clear_bbox(self, event=None):
