@@ -3,12 +3,37 @@
 
 import requests
 
-# BASE_URL = 'http://coca.localhost'
-BASE_URL = 'http://192.168.3.2:8080'
+# BASE_URL = 'http://annotation.localhost'
+BASE_URL = 'http://ubuntu.zhixiang.co:8889'
 
 
 class ServiceException(Exception):
     pass
+
+
+def get_all_images():
+    url = BASE_URL + '/image/list'
+    try:
+        r = requests.get(url)
+    except requests.exceptions.RequestException:
+        raise ServiceException('Network communication error')
+    if r.ok:
+        return r.json()
+    else:
+        error = r.json()
+        raise ServiceException(error['message'])
+
+
+def load_image(filename):
+    url = BASE_URL + '/image/view?file=' + filename
+    try:
+        r = requests.get(url, stream=True)
+    except requests.exceptions.RequestException:
+        raise ServiceException('Network communication error')
+    if r.ok:
+        return r.raw
+    else:
+        raise ServiceException('Load image failed')
 
 
 def get_all_classes(modified_since=None):

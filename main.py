@@ -29,14 +29,14 @@ class LabelTool:
         self.parent.resizable(width=FALSE, height=FALSE)
 
         # initialize global state
-        self.imageDir = ''
+        # self.imageDir = ''
         self.imageList = []
         self.egDir = ''
         self.egList = []
-        self.outDir = ''
+        # self.outDir = ''
         self.cur = 0
         self.total = 0
-        self.rootDir = ''
+        # self.rootDir = ''
         self.imagename = ''
         self.labelfilename = ''
         self.tkimg = None
@@ -206,7 +206,7 @@ class LabelTool:
         self.parent.after(100, self.choose_dir)
 
     def choose_dir(self, event=None):
-        self.rootDir = tkFileDialog.askdirectory()
+        # self.rootDir = tkFileDialog.askdirectory()
         self.load_classes()
         self.load_dir()
 
@@ -216,22 +216,23 @@ class LabelTool:
         #     tkMessageBox.showerror("Error!", message = "The specified dir doesn't exist!")
         #     return
         # get image list
-        self.imageDir = os.path.join(self.rootDir, 'images')
-        self.imageList = sorted(glob.glob(os.path.join(self.imageDir, '*.jpg')))
-        if len(self.imageList) == 0:
-            self.imageList = sorted(glob.glob(os.path.join(self.imageDir, '*.png')))
-        if len(self.imageList) == 0:
-            print 'No images found in the specified dir!'
-            return
+        # self.imageDir = os.path.join(self.rootDir, 'images')
+        # self.imageList = sorted(glob.glob(os.path.join(self.imageDir, '*.jpg')))
+        # if len(self.imageList) == 0:
+        #     self.imageList = sorted(glob.glob(os.path.join(self.imageDir, '*.png')))
+        # if len(self.imageList) == 0:
+        #     print 'No images found in the specified dir!'
+        #     return
+        self.imageList = service.get_all_images()
 
         # default to the 1st image in the collection
         self.cur = 1
         self.total = len(self.imageList)
 
         # set up output dir
-        self.outDir = os.path.join(self.rootDir, 'annotations')
-        if not os.path.exists(self.outDir):
-            os.mkdir(self.outDir)
+        # self.outDir = os.path.join(self.rootDir, 'annotations')
+        # if not os.path.exists(self.outDir):
+        #     os.mkdir(self.outDir)
 
         self.load_image()
         print '%d images loaded' % self.total
@@ -406,14 +407,14 @@ class LabelTool:
 
     def load_image(self):
         # load image
-        imagepath = self.imageList[self.cur - 1]
-        self.img = Image.open(imagepath)
-        self.lbl_image.config(text=os.path.split(imagepath)[-1])
+        filename = self.imageList[self.cur - 1]
+        self.img = Image.open(service.load_image(filename))
+        self.lbl_image.config(text=filename)
         self.progLabel.config(text="%04d/%04d" % (self.cur, self.total))
 
         # load labels
         self.clear_bbox()
-        self.imagename = os.path.split(imagepath)[-1].split('.')[0]
+        self.imagename = filename.split('.')[0]
         try:
             annotation = service.get_annotation(self.imagename)
         except service.ServiceException, e:
