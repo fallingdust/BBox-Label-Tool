@@ -359,7 +359,7 @@ class LabelTool:
             tmp = bbox['bbox']
             if not ROTATE_IMAGE and self.rotated_degree != 0:
                 tmp = self.rotate_annotation(bbox['bbox'][0], bbox['bbox'][1], bbox['bbox'][2], bbox['bbox'][3],
-                                             -self.rotated_degree, self.tkimg.width() / 2, self.tkimg.height() / 2)
+                                             -self.rotated_degree, self.tkimg.width(), self.tkimg.height())
             truncated = bbox['truncated']
             self.draw_bbox(cls, tmp, truncated)
 
@@ -375,7 +375,9 @@ class LabelTool:
                                                dash=(3, 4) if truncated else None)
         self.rect_ids.append(rect_id)
 
-    def rotate_annotation(self, x1, y1, x2, y2, rotated_degree, center_x, center_y):
+    def rotate_annotation(self, x1, y1, x2, y2, rotated_degree, width, height):
+        center_x = width / 2
+        center_y = height / 2
         x3 = x1
         y3 = y2
         x4 = x2
@@ -399,11 +401,11 @@ class LabelTool:
         p2_y = y3 * a - x3 * b + center_y
         p3_x = x4 * a + y4 * b + center_x
         p3_y = y4 * a - x4 * b + center_y
-        x1 = int(math.floor(min(p0_x, p1_x, p2_x, p3_x)))
-        y1 = int(math.floor(min(p0_y, p1_y, p2_y, p3_y)))
-        x2 = int(math.ceil(max(p0_x, p1_x, p2_x, p3_x)))
-        y2 = int(math.ceil(max(p0_y, p1_y, p2_y, p3_y)))
-        return [x1, y1, x2, y2]
+        x1_ = min(max(int(math.floor(min(p0_x, p1_x, p2_x, p3_x))), 0), width - 1)
+        y1_ = min(max(int(math.floor(min(p0_y, p1_y, p2_y, p3_y))), 0), height - 1)
+        x2_ = min(max(int(math.ceil(max(p0_x, p1_x, p2_x, p3_x))), 0), width - 1)
+        y2_ = min(max(int(math.ceil(max(p0_y, p1_y, p2_y, p3_y))), 0), height - 1)
+        return [x1_, y1_, x2_, y2_]
 
     def load_image(self):
         # load image
@@ -421,12 +423,31 @@ class LabelTool:
             tkMessageBox.showerror('加载标注信息失败', e.message)
             return
         if annotation:
+            try:
+                bboxes_may_wrong = service.get_bboxes_may_wrong(self.imagename)
+            except service.ServiceException, e:
+                bboxes_may_wrong = None
+
             self.rotated_degree = annotation['rotate']
+            self.lbl_rotate.config(text='{}°'.format(self.rotated_degree))
             for bbox in annotation['bboxes']:
+                may_wrong = False
+                if bboxes_may_wrong is not None:
+                    bbox_to_check = [bbox['x1'], bbox['y1'], bbox['x2'], bbox['y2']]
+                    # 如果有旋转角度，先把标注的框反向旋转，因为bboxes_may_wrong是在未旋转的图片上识别出来的
+                    if self.rotated_degree != 0:
+                        bbox_to_check = self.rotate_annotation(bbox['x1'], bbox['y1'], bbox['x2'], bbox['y2'],
+                                                               -self.rotated_degree, self.img.width, self.img.height)
+                    for bbox_may_wrong in bboxes_may_wrong:
+                        if bbox_may_wrong[0] == bbox_to_check[0] and bbox_may_wrong[1] == bbox_to_check[1] and \
+                                        bbox_may_wrong[2] == bbox_to_check[2] and bbox_may_wrong[3] == bbox_to_check[3]:
+                            may_wrong = True
+                            break
                 self.bboxList.append({
                     'class': bbox['className'].encode('utf-8'),
                     'bbox': (bbox['x1'], bbox['y1'], bbox['x2'], bbox['y2']),
-                    'truncated': bbox['truncated']
+                    'truncated': bbox['truncated'],
+                    'may_wrong': may_wrong
                 })
             self.bboxList.sort(key=lambda bbox: bbox['class'])
             for bbox in self.bboxList:
@@ -434,6 +455,8 @@ class LabelTool:
                 tmp = bbox['bbox']
                 self.listbox.insert(END, '%s (%d, %d, %d, %d)' % (cls, tmp[0], tmp[1], tmp[2], tmp[3]))
                 self.listbox.itemconfig(END, fg=self.get_class_color(cls))
+                if bbox['may_wrong']:
+                    self.listbox.itemconfig(END, bg='yellow')
         self.draw()
         self.annotation_changed = False
 

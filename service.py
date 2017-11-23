@@ -91,6 +91,21 @@ def get_annotation(image):
         raise ServiceException(error['message'])
 
 
+def get_bboxes_may_wrong(image):
+    url = BASE_URL + '/annotation/may-wrong'
+    try:
+        r = requests.get(url, {'image': image})
+    except requests.exceptions.RequestException:
+        raise ServiceException('Network communication error')
+    if r.ok:
+        return r.json()
+    elif r.status_code == 404:
+        return None
+    else:
+        error = r.json()
+        raise ServiceException(error['message'])
+
+
 def save_annotation(annotation):
     url = BASE_URL + '/annotation/upsert'
     try:
