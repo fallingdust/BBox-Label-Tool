@@ -4,7 +4,8 @@
 import requests
 
 # BASE_URL = 'http://annotation.localhost'
-BASE_URL = 'http://ubuntu.zhixiang.co:8889'
+BASE_URL = 'http://111.231.50.154:8888'
+# BASE_URL = 'http://ubuntu.zhixiang.co:8888'
 
 
 class ServiceException(Exception):
@@ -25,9 +26,9 @@ def get_all_images():
 
 
 def load_image(filename):
-    url = BASE_URL + '/image/view?file=' + filename
+    url = BASE_URL + '/image/view'
     try:
-        r = requests.get(url, stream=True)
+        r = requests.get(url, {'file': filename}, stream=True)
     except requests.exceptions.RequestException:
         raise ServiceException('Network communication error')
     if r.ok:
@@ -36,24 +37,10 @@ def load_image(filename):
         raise ServiceException('Load image failed')
 
 
-def get_all_classes(modified_since=None):
+def get_all_classes():
     url = BASE_URL + '/sku/list'
     try:
-        r = requests.get(url, {'modifiedSince': modified_since})
-    except requests.exceptions.RequestException:
-        raise ServiceException('Network communication error')
-    if r.ok:
-        data = r.json()
-        return data['skus'], data['lastModifyTime']
-    else:
-        error = r.json()
-        raise ServiceException(error['message'])
-
-
-def add_class(class_name):
-    url = BASE_URL + '/sku/create'
-    try:
-        r = requests.post(url, {'name': class_name})
+        r = requests.get(url)
     except requests.exceptions.RequestException:
         raise ServiceException('Network communication error')
     if r.ok:
@@ -63,23 +50,10 @@ def add_class(class_name):
         raise ServiceException(error['message'])
 
 
-def remove_class(class_name):
-    url = BASE_URL + '/sku/delete'
+def get_detection(image):
+    url = BASE_URL + '/detection/view'
     try:
-        r = requests.post(url, {'name': class_name})
-    except requests.exceptions.RequestException:
-        raise ServiceException('Network communication error')
-    if r.ok:
-        return r.json()
-    else:
-        error = r.json()
-        raise ServiceException(error['message'])
-
-
-def get_annotation(image):
-    url = BASE_URL + '/annotation/view'
-    try:
-        r = requests.get(url, {'image': image})
+        r = requests.get(url, {'image_file': image})
     except requests.exceptions.RequestException:
         raise ServiceException('Network communication error')
     if r.ok:
@@ -91,25 +65,10 @@ def get_annotation(image):
         raise ServiceException(error['message'])
 
 
-def get_bboxes_may_wrong(image):
-    url = BASE_URL + '/annotation/may-wrong'
+def save_detection(detection):
+    url = BASE_URL + '/detection/update'
     try:
-        r = requests.get(url, {'image': image})
-    except requests.exceptions.RequestException:
-        raise ServiceException('Network communication error')
-    if r.ok:
-        return r.json()
-    elif r.status_code == 404:
-        return None
-    else:
-        error = r.json()
-        raise ServiceException(error['message'])
-
-
-def save_annotation(annotation):
-    url = BASE_URL + '/annotation/upsert'
-    try:
-        r = requests.post(url, None, annotation)
+        r = requests.post(url, None, detection)
     except requests.exceptions.RequestException:
         raise ServiceException('Network communication error')
     if r.ok:
@@ -117,6 +76,7 @@ def save_annotation(annotation):
     else:
         error = r.json()
         raise ServiceException(error['message'])
+
 
 if __name__ == '__main__':
     print get_all_classes()
